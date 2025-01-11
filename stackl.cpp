@@ -133,7 +133,7 @@ value parse_tok(std::string tok) {
         case 'd':  return {{.dbl_v =    get_val<double>(tok.substr(1)) }, dbl_t};
         case 'i':  return {{.int_v =       get_val<int>(tok.substr(1)) }, int_t};
         case '\\': return {{.chr_v = (char)get_val<int>(tok.substr(1)) }, chr_t}; // character by-value
-        case 't':  return {{.typ_v =           str_type_map[tok.substr(1)] }, typ_t}; // type specifier for c
+        case 't':  return {{.typ_v =       str_type_map[tok.substr(1)] }, typ_t}; // type specifier for c
         case 'j':  return {{.fun_v =                              jump }, fun_t};
 
         if (size < 2) return nul_v;
