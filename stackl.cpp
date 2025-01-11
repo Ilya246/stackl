@@ -7,7 +7,7 @@
 #include <vector>
 
 enum function_t { add, sub, mult, frac, idiv, jump, greater, lesser, print, cast };
-enum value_t { int_t, dbl_t, chr_t, fun_t, typ_t, nul_t, skp_t };
+enum value_t { int_t, dbl_t, chr_t, fun_t, typ_t, nul_t, skp_t, del_t };
 std::map<std::string, value_t> str_type_map {{"int", int_t}, {"dbl", dbl_t}, {"chr", chr_t}, {"typ", typ_t}, {"nul", nul_t}};
 std::map<value_t, std::string> type_str_map {{int_t, "int"}, {dbl_t, "dbl"}, {chr_t, "chr"}, {typ_t, "typ"}, {nul_t, "nul"}};
 
@@ -100,7 +100,7 @@ T get_val(const std::string& s) {
     return val;
 }
 
-value parse_tok(std::string tok) {
+value parse_tok(std::string tok, size_t& exec_pos) {
     size_t size = tok.size();
     if (size == 0) return nul_v;
     switch (tok[0]) {
@@ -125,6 +125,9 @@ value parse_tok(std::string tok) {
 
         case 'c': if (size != 1) return nul_v;             // convert second value to type specified
                   else return {{.fun_v = cast   }, fun_t};
+
+        case 'e': return {{.int_v = (int64_t)exec_pos}, int_t}; // returns current execution position
+        case 'r': return {{                          }, del_t}; // pops stack
 
         // variable-character tokens
         case '/': if (size != 1 && (size != 2 || tok[1] != '/')) return nul_v;
@@ -209,7 +212,10 @@ int main() {
             }
             toks.push_back(tok);
         }
-        value val = parse_tok(toks[exec_pos]);
+        value val = parse_tok(toks[exec_pos], exec_pos);
+        if (val.type == del_t) {
+            pop_value(v_stack);
+        }
         if (val.type == nul_t) {
             throw std::runtime_error("Invalid token: " + toks[exec_pos]);
         }
