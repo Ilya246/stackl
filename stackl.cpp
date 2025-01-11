@@ -8,7 +8,8 @@
 
 enum function_t { add, sub, mult, frac, idiv, jump, greater, lesser, print, cast };
 enum value_t { int_t, dbl_t, chr_t, fun_t, typ_t, nul_t, skp_t };
-std::map<std::string, value_t> type_map {{"int", int_t}, {"dbl", dbl_t}, {"chr", chr_t}};
+std::map<std::string, value_t> str_type_map {{"int", int_t}, {"dbl", dbl_t}, {"chr", chr_t}, {"typ", typ_t}, {"nul", nul_t}};
+std::map<value_t, std::string> type_str_map {{int_t, "int"}, {dbl_t, "dbl"}, {chr_t, "chr"}, {typ_t, "typ"}, {nul_t, "nul"}};
 
 union value_u {
     int64_t int_v; // integer
@@ -24,10 +25,13 @@ struct value {
     value_t type;
 
     double get_dbl() const {
-        return type == dbl_t ? val.dbl_v : (type == int_t ? (double)val.int_v : (double)val.chr_v);
+        return type == dbl_t ?          val.dbl_v : (type == int_t ? (double)val.int_v :  (double)val.chr_v);
     }
     int64_t get_int() const {
-        return type == dbl_t ? (int64_t)val.dbl_v : (type == int_t ? val.int_v : (int64_t)val.chr_v);
+        return type == dbl_t ? (int64_t)val.dbl_v : (type == int_t ?         val.int_v : (int64_t)val.chr_v);
+    }
+    char get_chr() const {
+        return type == dbl_t ?    (char)val.dbl_v : (type == int_t ?   (char)val.int_v :          val.chr_v);
     }
 
     value operator+(const value& rhs) const {
@@ -56,6 +60,32 @@ struct value {
     value operator<(const value& rhs) const {
         if (type == dbl_t || rhs.type == dbl_t) return {{.int_v = get_dbl() < rhs.get_dbl()}, int_t};
         else return {{.int_v = get_int() < rhs.get_int()}, int_t};
+    }
+    std::string to_string() const {
+        std::ostringstream stream;
+        switch (type) {
+            case int_t: {
+                stream << val.int_v;
+                break;
+            }
+            case dbl_t: {
+                stream << val.dbl_v;
+                break;
+            }
+            case chr_t: {
+                stream << val.chr_v;
+                break;
+            }
+            case typ_t: {
+                stream << type_str_map[val.typ_v];
+                break;
+            }
+            default: {
+                stream << "NUL";
+                break;
+            }
+        }
+        return stream.str();
     }
 };
 
@@ -103,7 +133,7 @@ value parse_tok(std::string tok) {
         case 'd':  return {{.dbl_v =    get_val<double>(tok.substr(1)) }, dbl_t};
         case 'i':  return {{.int_v =       get_val<int>(tok.substr(1)) }, int_t};
         case '\\': return {{.chr_v = (char)get_val<int>(tok.substr(1)) }, chr_t}; // character by-value
-        case 't':  return {{.typ_v =           type_map[tok.substr(1)] }, typ_t}; // type specifier for c
+        case 't':  return {{.typ_v =           str_type_map[tok.substr(1)] }, typ_t}; // type specifier for c
         case 'j':  return {{.fun_v =                              jump }, fun_t};
 
         if (size < 2) return nul_v;
@@ -121,8 +151,7 @@ void push_value(std::stack<value>& stack, const value& val) {
 
 value pop_value(std::stack<value>& stack) {
     if (stack.empty()) {
-        std::cerr << "Stack underflow!" << std::endl;
-        exit(1);
+        throw std::runtime_error("Stack underflow");
     }
     value val = stack.top();
     stack.pop();
@@ -140,26 +169,19 @@ value execute_function(std::stack<value>& stack, function_t func, size_t& exec_p
         case lesser:  return pop_value(stack) < pop_value(stack);
         case print: {
             value val;
-            while ((val = pop_value(stack)).type != nul_t) {
-                switch (val.type) {
-                    case int_t: std::cout << val.val.int_v; break;
-                    case dbl_t: std::cout << val.val.dbl_v; break;
-                    case chr_t: std::cout << val.val.chr_v; break;
-                    default: return nul_v;
-                }
+            while (!stack.empty() && (val = pop_value(stack)).get_chr() != '\0') {
+                std::cout << val.to_string();
             }
             return skip_v;
         }
         case cast: {
             value type_to  = pop_value(stack);
             value cast_val = pop_value(stack);
-            value_t& type = cast_val.type;
-            value_u& val = cast_val.val;
             if (type_to.type != typ_t) return nul_v;
             switch (type_to.val.typ_v) {
-                case int_t: return {{.int_v = (type == int_t ?         val.int_v : (type == dbl_t ? (int64_t)val.dbl_v : (int64_t)val.chr_v))}, int_t};
-                case dbl_t: return {{.dbl_v = (type == int_t ? (double)val.int_v : (type == dbl_t ?          val.dbl_v : (double)val.chr_v))},  dbl_t};
-                case chr_t: return {{.chr_v = (type == int_t ?   (char)val.int_v : (type == dbl_t ?    (char)val.dbl_v :         val.chr_v))},  int_t};
+                case int_t: return {{.int_v = cast_val.get_int() }, int_t};
+                case dbl_t: return {{.dbl_v = cast_val.get_dbl() }, dbl_t};
+                case chr_t: return {{.chr_v = cast_val.get_chr()}, int_t};
                 default: return nul_v;
             }
         }
@@ -177,16 +199,19 @@ int main() {
     std::stack<value> v_stack;
     std::vector<std::string> toks;
     size_t exec_pos = 0;
+    try {
     while (true) {
         if (exec_pos >= toks.size()) {
             std::string tok;
-            if (!(std::cin >> tok)) break;
+            if (!(std::cin >> tok)) {
+                if (std::cin.eof()) return 0;
+                throw std::runtime_error("Could not read token");
+            }
             toks.push_back(tok);
         }
         value val = parse_tok(toks[exec_pos]);
         if (val.type == nul_t) {
-            std::cerr << "Invalid token: " << toks[exec_pos] << std::endl;
-            exit(1);
+            throw std::runtime_error("Invalid token: " + toks[exec_pos]);
         }
         if (val.type == fun_t) {
             push_value(v_stack, execute_function(v_stack, val.val.fun_v, exec_pos));
@@ -194,6 +219,17 @@ int main() {
             push_value(v_stack, val);
         }
         exec_pos++;
+    }
+    } catch (std::runtime_error& e) {
+        std::cerr << "Caught exception while executing program: " << e.what() << std::endl;
+        std::cerr << "  While trying to execute instruction " << (exec_pos >= toks.size() ? "(OOB)" : toks[exec_pos]) << " at " << exec_pos << std::endl;
+        std::cerr << "  Stack dump: ";
+        while (!v_stack.empty()) {
+            value v = pop_value(v_stack);
+            std::cerr << v.to_string() << " ";
+        }
+        std::cerr << std::endl;
+        return 1;
     }
     return 0;
 }
