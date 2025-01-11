@@ -1,13 +1,13 @@
 #include <cstdint>
 #include <iostream>
 #include <map>
-#include <stack>
+#include <queue>
 #include <string>
 #include <sstream>
 #include <vector>
 
 enum function_t { add, sub, mult, frac, idiv, jump, greater, lesser, print, cast };
-enum value_t { int_t, dbl_t, chr_t, fun_t, typ_t, nul_t, skp_t, del_t };
+enum value_t { int_t, dbl_t, chr_t, fun_t, typ_t, nul_t, skp_t, del_t, end_t };
 std::map<std::string, value_t> str_type_map {{"int", int_t}, {"dbl", dbl_t}, {"chr", chr_t}, {"typ", typ_t}, {"nul", nul_t}};
 std::map<value_t, std::string> type_str_map {{int_t, "int"}, {dbl_t, "dbl"}, {chr_t, "chr"}, {typ_t, "typ"}, {nul_t, "nul"}};
 
@@ -90,7 +90,7 @@ struct value {
 };
 
 const value nul_v = {{}, nul_t};
-const value skip_v = {{}, skp_t}; // special value that can never be written to the stack
+const value skip_v = {{}, skp_t}; // special value that can never be written to the queue
 
 template<typename T>
 T get_val(const std::string& s) {
@@ -127,7 +127,8 @@ value parse_tok(std::string tok, size_t& exec_pos) {
                   else return {{.fun_v = cast   }, fun_t};
 
         case 'e': return {{.int_v = (int64_t)exec_pos}, int_t}; // returns current execution position
-        case 'r': return {{                          }, del_t}; // pops stack
+        case 'r': return {{                          }, del_t}; // pops queue
+        case 'f': return {{                          }, end_t}; // ends execution
 
         // variable-character tokens
         case '/': if (size != 1 && (size != 2 || tok[1] != '/')) return nul_v;
@@ -141,45 +142,45 @@ value parse_tok(std::string tok, size_t& exec_pos) {
 
         if (size < 2) return nul_v;
         // 2-character tokens
-        case 'l': return {{tok[1]}, chr_t}; // character literal
+        case '\'': return {{tok[1]}, chr_t}; // character literal
 
         default: return nul_v;
     }
 }
 
 
-void push_value(std::stack<value>& stack, const value& val) {
-    if (val.type != skp_t) stack.push(val);
+void push_value(std::queue<value>& queue, const value& val) {
+    if (val.type != skp_t) queue.push(val);
 }
 
-value pop_value(std::stack<value>& stack) {
-    if (stack.empty()) {
+value pop_value(std::queue<value>& queue) {
+    if (queue.empty()) {
         throw std::runtime_error("Stack underflow");
     }
-    value val = stack.top();
-    stack.pop();
+    value val = queue.front();
+    queue.pop();
     return val;
 }
 
-value execute_function(std::stack<value>& stack, function_t func, size_t& exec_pos) {
+value execute_function(std::queue<value>& queue, function_t func, size_t& exec_pos) {
     switch (func) {
-        case add:     return pop_value(stack) + pop_value(stack);
-        case sub:     return pop_value(stack) - pop_value(stack);
-        case mult:    return pop_value(stack) * pop_value(stack);
-        case frac:    return pop_value(stack) / pop_value(stack);
-        case idiv:    return pop_value(stack).idiv(pop_value(stack));
-        case greater: return pop_value(stack) > pop_value(stack);
-        case lesser:  return pop_value(stack) < pop_value(stack);
+        case add:     return pop_value(queue) + pop_value(queue);
+        case sub:     return pop_value(queue) - pop_value(queue);
+        case mult:    return pop_value(queue) * pop_value(queue);
+        case frac:    return pop_value(queue) / pop_value(queue);
+        case idiv:    return pop_value(queue).idiv(pop_value(queue));
+        case greater: return pop_value(queue) > pop_value(queue);
+        case lesser:  return pop_value(queue) < pop_value(queue);
         case print: {
             value val;
-            while (!stack.empty() && (val = pop_value(stack)).get_chr() != '\0') {
+            while (!queue.empty() && (val = pop_value(queue)).get_chr() != '\0') {
                 std::cout << val.to_string();
             }
             return skip_v;
         }
         case cast: {
-            value type_to  = pop_value(stack);
-            value cast_val = pop_value(stack);
+            value type_to  = pop_value(queue);
+            value cast_val = pop_value(queue);
             if (type_to.type != typ_t) return nul_v;
             switch (type_to.val.typ_v) {
                 case int_t: return {{.int_v = cast_val.get_int() }, int_t};
@@ -189,7 +190,7 @@ value execute_function(std::stack<value>& stack, function_t func, size_t& exec_p
             }
         }
         case jump: {
-            value amt = pop_value(stack);
+            value amt = pop_value(queue);
             if (amt.type != int_t) return nul_v;
             exec_pos = amt.val.int_v;
             return skip_v;
@@ -199,7 +200,7 @@ value execute_function(std::stack<value>& stack, function_t func, size_t& exec_p
 }
 
 int main() {
-    std::stack<value> v_stack;
+    std::queue<value> v_queue;
     std::vector<std::string> toks;
     size_t exec_pos = 0;
     try {
@@ -213,16 +214,25 @@ int main() {
             toks.push_back(tok);
         }
         value val = parse_tok(toks[exec_pos], exec_pos);
-        if (val.type == del_t) {
-            pop_value(v_stack);
-        }
-        if (val.type == nul_t) {
-            throw std::runtime_error("Invalid token: " + toks[exec_pos]);
-        }
-        if (val.type == fun_t) {
-            push_value(v_stack, execute_function(v_stack, val.val.fun_v, exec_pos));
-        } else {
-            push_value(v_stack, val);
+        switch (val.type) {
+            case end_t: {
+                return 0;
+            }
+            case del_t: {
+                pop_value(v_queue);
+                break;
+            }
+            case nul_t: {
+                throw std::runtime_error("Invalid token: " + toks[exec_pos]);
+            }
+            case fun_t: {
+                push_value(v_queue, execute_function(v_queue, val.val.fun_v, exec_pos));
+                break;
+            }
+            default: {
+                push_value(v_queue, val);
+                break;
+            }
         }
         exec_pos++;
     }
@@ -230,8 +240,8 @@ int main() {
         std::cerr << "Caught exception while executing program: " << e.what() << std::endl;
         std::cerr << "  While trying to execute instruction " << (exec_pos >= toks.size() ? "(OOB)" : toks[exec_pos]) << " at " << exec_pos << std::endl;
         std::cerr << "  Stack dump: ";
-        while (!v_stack.empty()) {
-            value v = pop_value(v_stack);
+        while (!v_queue.empty()) {
+            value v = pop_value(v_queue);
             std::cerr << v.to_string() << " ";
         }
         std::cerr << std::endl;
