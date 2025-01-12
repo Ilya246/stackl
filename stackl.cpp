@@ -109,30 +109,32 @@ value parse_tok(std::string tok, size_t& exec_pos) {
     if (size == 0) return nul_v;
     int32_t amt = get_val<int>(tok);
     size_t nnum = tok.find_first_not_of("-0123456789");
+    if (tok == "--") nnum = 1; // specialcase
     if (tok[0] == '-' && tok.size() > 1 && nnum == 1) amt = -1; // allow expressions like -i3
     if (amt == 0) amt = 1;
     else tok = tok.substr(nnum);
+    size = tok.size();
     switch (tok[0]) {
         // 1-character tokens
-        case '+': if (size != 1) return nul_v;             // add 2 values, output 1 numeric
+        case '+': if (size != 1) return nul_v; // add 2 values, output 1 numeric
                   else return {{.fun_v = add    }, fun_t, amt};
 
-        case '-': if (size != 1) return nul_v;             // substract 2 values, output 1 numeric
+        case '-': if (size != 1) return nul_v; // substract 2 values, output 1 numeric
                   else return {{.fun_v = sub    }, fun_t, amt};
 
-        case '*': if (size != 1) return nul_v;             // multiply 2 values, output 1 numeric
+        case '*': if (size != 1) return nul_v; // multiply 2 values, output 1 numeric
                   else return {{.fun_v = mult   }, fun_t, amt};
 
-        case '<': if (size != 1) return nul_v;             // compare 2 values, output 1 int
+        case '<': if (size != 1) return nul_v; // compare 2 values, output 1 int
                   else return {{.fun_v = lesser }, fun_t, amt};
 
-        case '>': if (size != 1) return nul_v;             // compare 2 values, output 1 int
+        case '>': if (size != 1) return nul_v; // compare 2 values, output 1 int
                   else return {{.fun_v = greater}, fun_t, amt};
 
-        case 'p': if (size != 1) return nul_v;             // print values until \0 character encountered
+        case 'p': if (size != 1) return nul_v; // print values until \0 character encountered
                   else return {{.fun_v = print  }, fun_t, amt};
 
-        case 'c': if (size != 1) return nul_v;             // convert second value to type specified
+        case 'c': if (size != 1) return nul_v; // convert second value to type specified
                   else return {{.fun_v = cast   }, fun_t, amt};
 
         case '#': return {{.int_v = (int64_t)exec_pos}, int_t, amt}; // returns current execution position
@@ -218,7 +220,9 @@ value execute_function(std::deque<value>& queue, function_t func, size_t& exec_p
         }
         case jump: {
             value amt = pop_value(queue, back);
+            value whether = pop_value(queue, back);
             if (amt.type != int_t) return nul_v;
+            if (whether.get_int() == 0) return skip_v;
             exec_pos = amt.val.int_v - 1; // so it doesn't skip over the jumped-to instr
             return skip_v;
         }

@@ -38,7 +38,7 @@ instructions:
 `d`, `i`, `\`, `t`, `'`: value literal specifiers: double, integer, char by-value, type, char: put specified value to end of queue<br>
 example: `d32.5` `i-5` `\32` `tint` `'c`
 
-`j`: takes 1 value and jumps execution to that index
+`j`: takes 2 values and, if second value is not 0, jumps execution to index equal to first value
 
 any instruction may be prepended by an integer to repeat it that amount of times<br>
 prepending any instruction by a minus will treat the queue in reverse (-3i5 will add 5 to the *front* of the queue 3 times)
