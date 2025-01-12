@@ -1,4 +1,7 @@
+#include "argparse/args.hpp"
+
 #include <cstdint>
+#include <fstream>
 #include <iostream>
 #include <map>
 #include <queue>
@@ -232,7 +235,26 @@ void dump_queue(std::ostream& s, std::queue<value> queue) { // copies it
 }
 
 int main(int argc, char** argv) {
-    bool debug = argc > 1;
+    bool debug = false;
+    std::string filename = "";
+    auto args = {
+        make_argument("debug", "d", "Print information about the program while it's running", debug),
+        make_argument("file", "f", "Execute program from file", filename)
+    };
+    parse_arguments(args, argc, argv);
+
+    std::shared_ptr<std::istream> in_stream_p = nullptr;
+    if (filename == "") in_stream_p = std::shared_ptr<std::istream>(&std::cin);
+    else {
+        std::shared_ptr<std::istream> stream = std::make_shared<std::ifstream>(filename);
+        if (!*stream) {
+            std::cerr << "Could not open input file " << filename;
+            return 1;
+        }
+        in_stream_p = stream;
+    }
+    std::istream& in_s = *in_stream_p;
+
     std::queue<value> v_queue;
     std::vector<std::string> toks;
     std::vector<size_t> textpos; // textual position of beginning of each token
@@ -241,8 +263,8 @@ int main(int argc, char** argv) {
     while (true) {
         while (exec_pos >= toks.size()) {
             std::string tok;
-            if (!(std::cin >> tok)) {
-                if (std::cin.eof()) return 0;
+            if (!(in_s >> tok)) {
+                if (in_s.eof()) return 0;
                 throw std::runtime_error("Could not read token");
             }
             textpos.push_back(textpos.size() == 0 ? 0 : textpos.back() + toks.back().size() + 1);
