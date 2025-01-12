@@ -37,4 +37,6 @@ example: `d32.5` `i-5` `\32` `tint` `'c`
 
 `j`: takes 1 value and jumps execution to that index
 
+any instruction may be prepended by an integer to repeat it that amount of times
+
 try example.sls for an example of a program that prints numbers from 10 to 1 using a jump loop

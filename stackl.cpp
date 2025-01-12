@@ -23,7 +23,7 @@ union value_u {
 struct value {
     value_u val;
     value_t type;
-    int32_t aux_val; // due to struct alignment this doesn't increase the memory footprint so why not
+    int32_t amount; // how many times to repeat the value
 
     double get_dbl() const {
         return type == dbl_t ?          val.dbl_v : (type == int_t ? (double)val.int_v :  (double)val.chr_v);
@@ -104,45 +104,49 @@ T get_val(const std::string& s) {
 value parse_tok(std::string tok, size_t& exec_pos) {
     size_t size = tok.size();
     if (size == 0) return nul_v;
+    int32_t amt = get_val<int>(tok);
+    size_t nnum = tok.find_first_not_of("0123456789");
+    if (amt < 1) amt = 1;
+    if (amt > 0) tok = tok.substr(nnum);
     switch (tok[0]) {
         // 1-character tokens
         case '+': if (size != 1) return nul_v;             // add 2 values, output 1 numeric
-                  else return {{.fun_v = add    }, fun_t};
+                  else return {{.fun_v = add    }, fun_t, amt};
 
         case '-': if (size != 1) return nul_v;             // substract 2 values, output 1 numeric
-                  else return {{.fun_v = sub    }, fun_t};
+                  else return {{.fun_v = sub    }, fun_t, amt};
 
         case '*': if (size != 1) return nul_v;             // multiply 2 values, output 1 numeric
-                  else return {{.fun_v = mult   }, fun_t};
+                  else return {{.fun_v = mult   }, fun_t, amt};
 
         case '<': if (size != 1) return nul_v;             // compare 2 values, output 1 int
-                  else return {{.fun_v = lesser }, fun_t};
+                  else return {{.fun_v = lesser }, fun_t, amt};
 
         case '>': if (size != 1) return nul_v;             // compare 2 values, output 1 int
-                  else return {{.fun_v = greater}, fun_t};
+                  else return {{.fun_v = greater}, fun_t, amt};
 
         case 'p': if (size != 1) return nul_v;             // print values until \0 character encountered
-                  else return {{.fun_v = print  }, fun_t};
+                  else return {{.fun_v = print  }, fun_t, amt};
 
         case 'c': if (size != 1) return nul_v;             // convert second value to type specified
-                  else return {{.fun_v = cast   }, fun_t};
+                  else return {{.fun_v = cast   }, fun_t, amt};
 
-        case '#': return {{.int_v = (int64_t)exec_pos}, int_t}; // returns current execution position
-        case '~': return {{.fun_v = del              }, fun_t}; // pops queue
-        case 'f': return {{.fun_v = end              }, fun_t}; // ends execution
-        case 'r': return {{.fun_v = dupe             }, fun_t}; // dupes current variable
-        case 'e': return {{.fun_v = repeat           }, fun_t, tok.size() < 2 ? 1 : get_val<int>(tok.substr(1))}; // moves current variable to end of queue provided amount of times
-        case '$': return {{.fun_v = swap             }, fun_t}; // outputs swapped input variables
+        case '#': return {{.int_v = (int64_t)exec_pos}, int_t, amt}; // returns current execution position
+        case '~': return {{.fun_v = del              }, fun_t, amt}; // pops queue
+        case 'f': return {{.fun_v = end              }, fun_t, amt}; // ends execution
+        case 'r': return {{.fun_v = dupe             }, fun_t, amt}; // dupes current variable
+        case 'e': return {{.fun_v = repeat           }, fun_t, amt}; // moves current variable to end of queue
+        case '$': return {{.fun_v = swap             }, fun_t, amt}; // outputs swapped input variables
 
         // variable-character tokens
         case '/': if (size != 1 && (size != 2 || tok[1] != '/')) return nul_v;
-                  else return {{.fun_v = (size == 2 ? idiv : frac)}, fun_t}; // either division or integer division
+                  else return {{.fun_v = (size == 2 ? idiv : frac)}, fun_t, amt}; // either division or integer division
 
-        case 'd':  return {{.dbl_v =    get_val<double>(tok.substr(1)) }, dbl_t};
-        case 'i':  return {{.int_v =       get_val<int>(tok.substr(1)) }, int_t};
-        case '\\': return {{.chr_v = (char)get_val<int>(tok.substr(1)) }, chr_t}; // character by-value
-        case 't':  return {{.typ_v =       str_type_map[tok.substr(1)] }, typ_t}; // type specifier for c
-        case 'j':  return {{.fun_v =                              jump }, fun_t};
+        case 'd':  return {{.dbl_v =    get_val<double>(tok.substr(1)) }, dbl_t, amt};
+        case 'i':  return {{.int_v =       get_val<int>(tok.substr(1)) }, int_t, amt};
+        case '\\': return {{.chr_v = (char)get_val<int>(tok.substr(1)) }, chr_t, amt}; // character by-value
+        case 't':  return {{.typ_v =       str_type_map[tok.substr(1)] }, typ_t, amt}; // type specifier for c
+        case 'j':  return {{.fun_v =                              jump }, fun_t, amt};
 
         if (size < 2) return nul_v;
         // 2-character tokens
@@ -170,16 +174,11 @@ value pop_value(std::queue<value>& queue) {
     return val;
 }
 
-value execute_function(std::queue<value>& queue, function_t func, size_t& exec_pos, int32_t aux_val) {
+value execute_function(std::queue<value>& queue, function_t func, size_t& exec_pos) {
     switch (func) {
         case add:     return pop_value(queue) + pop_value(queue);
         case mult:    return pop_value(queue) * pop_value(queue);
-        case repeat:  {
-            for (int32_t i = 0; i < aux_val; ++i){
-                push_value(queue, pop_value(queue));
-            }
-            return skip_v;
-        }
+        case repeat:  return pop_value(queue);
         case dupe:    return get_value(queue);
         case sub:     { value lhs = pop_value(queue); return lhs - pop_value(queue); }
         case frac:    { value lhs = pop_value(queue); return lhs / pop_value(queue); }
@@ -262,11 +261,11 @@ int main(int argc, char** argv) {
                 throw std::runtime_error("Invalid token: " + toks[exec_pos]);
             }
             case fun_t: {
-                push_value(v_queue, execute_function(v_queue, val.val.fun_v, exec_pos, val.aux_val));
+                for (int32_t i = 0; i < val.amount; ++i) push_value(v_queue, execute_function(v_queue, val.val.fun_v, exec_pos));
                 break;
             }
             default: {
-                push_value(v_queue, val);
+                for (int32_t i = 0; i < val.amount; ++i) push_value(v_queue, val);
                 break;
             }
         }
