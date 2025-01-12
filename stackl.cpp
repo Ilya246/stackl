@@ -1,5 +1,6 @@
 #include "argparse/args.hpp"
 
+#include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -9,7 +10,7 @@
 #include <sstream>
 #include <vector>
 
-enum function_t { add, sub, mult, frac, idiv, jump, greater, lesser, print, cast, del, end, repeat, dupe, swap };
+enum function_t { add, sub, mult, frac, modulo, idiv, jump, greater, lesser, equals, nequals, negate, print, cast, del, end, repeat, dupe, swap };
 enum value_t { int_t, dbl_t, chr_t, fun_t, typ_t, nul_t, skp_t };
 std::map<std::string, value_t> str_type_map {{"int", int_t}, {"dbl", dbl_t}, {"chr", chr_t}, {"typ", typ_t}, {"nul", nul_t}};
 std::map<value_t, std::string> type_str_map {{int_t, "int"}, {dbl_t, "dbl"}, {chr_t, "chr"}, {typ_t, "typ"}, {nul_t, "nul"}};
@@ -26,7 +27,7 @@ union value_u {
 struct value {
     value_u val;
     value_t type;
-    int32_t amount; // how many times to repeat the value
+    int32_t amount = 1; // how many times to repeat the value
 
     double get_dbl() const {
         return type == dbl_t ?          val.dbl_v : (type == int_t ? (double)val.int_v :  (double)val.chr_v);
@@ -64,6 +65,21 @@ struct value {
     value operator<(const value& rhs) const {
         if (type == dbl_t || rhs.type == dbl_t) return {{.int_v = get_dbl() < rhs.get_dbl()}, int_t};
         else return {{.int_v = get_int() < rhs.get_int()}, int_t};
+    }
+    value operator==(const value& rhs) const {
+        if (type == dbl_t || rhs.type == dbl_t) return {{.int_v = get_dbl() == rhs.get_dbl()}, int_t};
+        else return {{.int_v = get_int() == rhs.get_int()}, int_t};
+    }
+    value operator!=(const value& rhs) const {
+        if (type == dbl_t || rhs.type == dbl_t) return {{.int_v = get_dbl() != rhs.get_dbl()}, int_t};
+        else return {{.int_v = get_int() != rhs.get_int()}, int_t};
+    }
+    value operator!() const {
+        return {{.int_v = get_int() == 0}, int_t};
+    }
+    value operator%(const value& rhs) const {
+        if (type == dbl_t || rhs.type == dbl_t) return {{.dbl_v = std::fmod(get_dbl(), rhs.get_dbl())}, dbl_t};
+        else return {{.int_v = get_int() % rhs.get_int()}, int_t};
     }
     std::string to_string(bool as_value = false) const {
         std::ostringstream stream;
@@ -131,8 +147,14 @@ value parse_tok(std::string tok, size_t& exec_pos) {
         case '>': if (size != 1) return nul_v; // compare 2 values, output 1 int
                   else return {{.fun_v = greater}, fun_t, amt};
 
+        case '=': if (size != 1) return nul_v;
+                  else return {{.fun_v = equals }, fun_t, amt};
+
         case 'p': if (size != 1) return nul_v; // print values until \0 character encountered
                   else return {{.fun_v = print  }, fun_t, amt};
+
+        case '%': if (size != 1) return nul_v; // print values until \0 character encountered
+                  else return {{.fun_v = modulo }, fun_t, amt};
 
         case 'c': if (size != 1) return nul_v; // convert second value to type specified
                   else return {{.fun_v = cast   }, fun_t, amt};
@@ -147,6 +169,10 @@ value parse_tok(std::string tok, size_t& exec_pos) {
         // variable-character tokens
         case '/': if (size != 1 && (size != 2 || tok[1] != '/')) return nul_v;
                   else return {{.fun_v = (size == 2 ? idiv : frac)}, fun_t, amt}; // either division or integer division
+
+        // variable-character tokens
+        case '!': if (size != 1 && (size != 2 || tok[1] != '=')) return nul_v;
+                  else return {{.fun_v = (size == 2 ? nequals : negate)}, fun_t, amt}; // either division or integer division
 
         case 'd':  return {{.dbl_v =    get_val<double>(tok.substr(1)) }, dbl_t, amt};
         case 'i':  return {{.int_v =       get_val<int>(tok.substr(1)) }, int_t, amt};
@@ -183,10 +209,14 @@ value execute_function(std::deque<value>& queue, function_t func, size_t& exec_p
     switch (func) {
         case add:     return pop_value(queue, back) + pop_value(queue, back);
         case mult:    return pop_value(queue, back) * pop_value(queue, back);
+        case equals:  return pop_value(queue, back) == pop_value(queue, back);
+        case nequals: return pop_value(queue, back) != pop_value(queue, back);
+        case negate:  return !pop_value(queue, back);
         case repeat:  return pop_value(queue, back);
         case dupe:    return get_value(queue, back);
         case sub:     { value lhs = pop_value(queue, back); return lhs - pop_value(queue, back); }
         case frac:    { value lhs = pop_value(queue, back); return lhs / pop_value(queue, back); }
+        case modulo:  { value lhs = pop_value(queue, back); return lhs % pop_value(queue, back); }
         case idiv:    { value lhs = pop_value(queue, back); return lhs.idiv(pop_value(queue, back)); }
         case greater: { value lhs = pop_value(queue, back); return lhs > pop_value(queue, back); }
         case lesser:  { value lhs = pop_value(queue, back); return lhs < pop_value(queue, back); }
@@ -205,6 +235,7 @@ value execute_function(std::deque<value>& queue, function_t func, size_t& exec_p
             while (!queue.empty() && (val = pop_value(queue, back)).to_string()[0] != '\0') {
                 std::cout << val.to_string();
             }
+            std::cout.flush();
             return skip_v;
         }
         case cast: {
@@ -235,7 +266,6 @@ void dump_queue(std::ostream& s, std::deque<value> queue) { // copies it
         value v = pop_value(queue, false);
         s << v.to_string(true) << " ";
     }
-    s << std::endl;
 }
 
 int main(int argc, char** argv) {
@@ -276,8 +306,7 @@ int main(int argc, char** argv) {
         }
         value val = parse_tok(toks[exec_pos], exec_pos);
         if (debug) {
-            std::cerr << "\nq: ";
-            dump_queue(std::cerr, v_queue);
+            std::cerr << '\n';
             for (const std::string& s : toks) std::cerr << s << " ";
             std::string prepend(textpos[exec_pos], ' ');
             std::cerr << '\n' << prepend << "^" << exec_pos << '\n';
@@ -295,6 +324,11 @@ int main(int argc, char** argv) {
                 break;
             }
         }
+        if (debug) {
+            std::cerr << "[";
+            dump_queue(std::cerr, v_queue);
+            std::cerr << "]" << std::endl;
+        }
         ++exec_pos;
     }
     } catch (std::runtime_error& e) {
@@ -302,6 +336,7 @@ int main(int argc, char** argv) {
         std::cerr << "  While trying to execute instruction " << (exec_pos >= toks.size() ? "(OOB)" : toks[exec_pos]) << " at " << exec_pos << std::endl;
         std::cerr << "  Stack dump: ";
         dump_queue(std::cerr, v_queue);
+        std::cerr << std::endl;
         return 1;
     }
     return 0;
