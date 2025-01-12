@@ -10,7 +10,7 @@
 #include <sstream>
 #include <vector>
 
-enum function_t { add, sub, mult, frac, modulo, idiv, jump, greater, lesser, equals, nequals, negate, print, cast, del, end, repeat, dupe, swap };
+enum function_t { add, sub, mult, frac, modulo, idiv, jump, greater, lesser, equals, nequals, negate, print, cast, del, end, repeat, dupe, swap, cpos };
 enum value_t { int_t, dbl_t, chr_t, fun_t, typ_t, nul_t, skp_t };
 std::map<std::string, value_t> str_type_map {{"int", int_t}, {"dbl", dbl_t}, {"chr", chr_t}, {"typ", typ_t}, {"nul", nul_t}};
 std::map<value_t, std::string> type_str_map {{int_t, "int"}, {dbl_t, "dbl"}, {chr_t, "chr"}, {typ_t, "typ"}, {nul_t, "nul"}};
@@ -120,7 +120,7 @@ T get_val(const std::string& s) {
     return val;
 }
 
-value parse_tok(std::string tok, size_t& exec_pos) {
+value parse_tok(std::string tok) {
     size_t size = tok.size();
     if (size == 0) return nul_v;
     int32_t amt = get_val<int>(tok);
@@ -159,7 +159,7 @@ value parse_tok(std::string tok, size_t& exec_pos) {
         case 'c': if (size != 1) return nul_v; // convert second value to type specified
                   else return {{.fun_v = cast   }, fun_t, amt};
 
-        case '#': return {{.int_v = (int64_t)exec_pos}, int_t, amt}; // returns current execution position
+        case '#': return {{.fun_v = cpos             }, fun_t, amt}; // returns current execution position
         case '~': return {{.fun_v = del              }, fun_t, amt}; // pops queue
         case 'f': return {{.fun_v = end              }, fun_t, amt}; // ends execution
         case 'r': return {{.fun_v = dupe             }, fun_t, amt}; // dupes current variable
@@ -214,6 +214,7 @@ value execute_function(std::deque<value>& queue, function_t func, size_t& exec_p
         case negate:  return !pop_value(queue, back);
         case repeat:  return pop_value(queue, back);
         case dupe:    return get_value(queue, back);
+        case cpos:    return {{.int_v = (int64_t)exec_pos}, int_t};
         case sub:     { value lhs = pop_value(queue, back); return lhs - pop_value(queue, back); }
         case frac:    { value lhs = pop_value(queue, back); return lhs / pop_value(queue, back); }
         case modulo:  { value lhs = pop_value(queue, back); return lhs % pop_value(queue, back); }
@@ -290,8 +291,9 @@ int main(int argc, char** argv) {
     std::istream& in_s = *in_stream_p;
 
     std::deque<value> v_queue;
-    std::vector<std::string> toks;
-    std::vector<size_t> textpos; // textual position of beginning of each token
+    std::vector<value> toks;
+    std::vector<std::string> text_toks;
+    std::vector<size_t> text_pos; // textual position of beginning of each token
     size_t exec_pos = 0;
     try {
     while (true) {
@@ -301,19 +303,20 @@ int main(int argc, char** argv) {
                 if (in_s.eof()) return 0;
                 throw std::runtime_error("Could not read token");
             }
-            textpos.push_back(textpos.size() == 0 ? 0 : textpos.back() + toks.back().size() + 1);
-            toks.push_back(tok);
+            text_pos.push_back(text_pos.size() == 0 ? 0 : text_pos.back() + text_toks.back().size() + 1);
+            text_toks.push_back(tok);
+            toks.push_back(parse_tok(tok));
         }
-        value val = parse_tok(toks[exec_pos], exec_pos);
+        value val = toks[exec_pos];
         if (debug) {
             std::cerr << '\n';
-            for (const std::string& s : toks) std::cerr << s << " ";
-            std::string prepend(textpos[exec_pos], ' ');
+            for (const std::string& s : text_toks) std::cerr << s << " ";
+            std::string prepend(text_pos[exec_pos], ' ');
             std::cerr << '\n' << prepend << "^" << exec_pos << '\n';
         }
         switch (val.type) {
             case nul_t: {
-                throw std::runtime_error("Invalid token: " + toks[exec_pos]);
+                throw std::runtime_error("Invalid token: " + text_toks[exec_pos]);
             }
             case fun_t: {
                 for (int32_t i = 0; i < std::abs(val.amount); ++i) push_value(v_queue, execute_function(v_queue, val.val.fun_v, exec_pos, val.amount < 0), val.amount > 0);
@@ -333,7 +336,7 @@ int main(int argc, char** argv) {
     }
     } catch (std::runtime_error& e) {
         std::cerr << "Caught exception while executing program: " << e.what() << std::endl;
-        std::cerr << "  While trying to execute instruction " << (exec_pos >= toks.size() ? "(OOB)" : toks[exec_pos]) << " at " << exec_pos << std::endl;
+        std::cerr << "  While trying to execute instruction " << (exec_pos >= text_toks.size() ? "(OOB)" : text_toks[exec_pos]) << " at " << exec_pos << std::endl;
         std::cerr << "  Stack dump: ";
         dump_queue(std::cerr, v_queue);
         std::cerr << std::endl;
