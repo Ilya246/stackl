@@ -240,7 +240,7 @@ int main(int argc, char** argv) {
     size_t exec_pos = 0;
     try {
     while (true) {
-        if (exec_pos >= toks.size()) {
+        while (exec_pos >= toks.size()) {
             std::string tok;
             if (!(std::cin >> tok)) {
                 if (std::cin.eof()) return 0;
@@ -255,7 +255,7 @@ int main(int argc, char** argv) {
             dump_queue(std::cerr, v_queue);
             for (const std::string& s : toks) std::cerr << s << " ";
             std::string prepend(textpos[exec_pos], ' ');
-            std::cerr << '\n' << prepend << "^\n";
+            std::cerr << '\n' << prepend << "^" << exec_pos << std::endl;
         }
         switch (val.type) {
             case nul_t: {
