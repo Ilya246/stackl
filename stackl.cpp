@@ -4,7 +4,7 @@
 #include <fstream>
 #include <iostream>
 #include <map>
-#include <queue>
+#include <deque>
 #include <string>
 #include <sstream>
 #include <vector>
@@ -108,9 +108,10 @@ value parse_tok(std::string tok, size_t& exec_pos) {
     size_t size = tok.size();
     if (size == 0) return nul_v;
     int32_t amt = get_val<int>(tok);
-    size_t nnum = tok.find_first_not_of("0123456789");
-    if (amt < 1) amt = 1;
-    if (amt > 0) tok = tok.substr(nnum);
+    size_t nnum = tok.find_first_not_of("-0123456789");
+    if (tok[0] == '-' && tok.size() > 1 && nnum == 1) amt = -1; // allow expressions like -i3
+    if (amt == 0) amt = 1;
+    else tok = tok.substr(nnum);
     switch (tok[0]) {
         // 1-character tokens
         case '+': if (size != 1) return nul_v;             // add 2 values, output 1 numeric
@@ -160,54 +161,53 @@ value parse_tok(std::string tok, size_t& exec_pos) {
 }
 
 
-void push_value(std::queue<value>& queue, const value& val) {
-    if (val.type != skp_t) queue.push(val);
+void push_value(std::deque<value>& queue, const value& val, bool back) {
+    if (val.type != skp_t) back ? queue.push_back(val) : queue.push_front(val);
 }
 
-value get_value(std::queue<value>& queue) {
+value get_value(std::deque<value>& queue, bool back) {
     if (queue.empty()) {
         throw std::runtime_error("Stack underflow");
     }
-    value val = queue.front();
-    return val;
+    return back ? queue.back() : queue.front();
 }
-value pop_value(std::queue<value>& queue) {
-    value val = get_value(queue);
-    queue.pop();
+value pop_value(std::deque<value>& queue, bool back) {
+    value val = get_value(queue, back);
+    back ? queue.pop_back() : queue.pop_front();
     return val;
 }
 
-value execute_function(std::queue<value>& queue, function_t func, size_t& exec_pos) {
+value execute_function(std::deque<value>& queue, function_t func, size_t& exec_pos, bool back) {
     switch (func) {
-        case add:     return pop_value(queue) + pop_value(queue);
-        case mult:    return pop_value(queue) * pop_value(queue);
-        case repeat:  return pop_value(queue);
-        case dupe:    return get_value(queue);
-        case sub:     { value lhs = pop_value(queue); return lhs - pop_value(queue); }
-        case frac:    { value lhs = pop_value(queue); return lhs / pop_value(queue); }
-        case idiv:    { value lhs = pop_value(queue); return lhs.idiv(pop_value(queue)); }
-        case greater: { value lhs = pop_value(queue); return lhs > pop_value(queue); }
-        case lesser:  { value lhs = pop_value(queue); return lhs < pop_value(queue); }
+        case add:     return pop_value(queue, back) + pop_value(queue, back);
+        case mult:    return pop_value(queue, back) * pop_value(queue, back);
+        case repeat:  return pop_value(queue, back);
+        case dupe:    return get_value(queue, back);
+        case sub:     { value lhs = pop_value(queue, back); return lhs - pop_value(queue, back); }
+        case frac:    { value lhs = pop_value(queue, back); return lhs / pop_value(queue, back); }
+        case idiv:    { value lhs = pop_value(queue, back); return lhs.idiv(pop_value(queue, back)); }
+        case greater: { value lhs = pop_value(queue, back); return lhs > pop_value(queue, back); }
+        case lesser:  { value lhs = pop_value(queue, back); return lhs < pop_value(queue, back); }
         case end:     exit(0);
         case swap: {
-            value old = pop_value(queue);
-            push_value(queue, pop_value(queue));
+            value old = pop_value(queue, back);
+            push_value(queue, pop_value(queue, back), !back);
             return old;
         }
         case del: {
-            pop_value(queue);
+            pop_value(queue, back);
             return skip_v;
         }
         case print: {
             value val;
-            while (!queue.empty() && (val = pop_value(queue)).to_string()[0] != '\0') {
+            while (!queue.empty() && (val = pop_value(queue, back)).to_string()[0] != '\0') {
                 std::cout << val.to_string();
             }
             return skip_v;
         }
         case cast: {
-            value type_to  = pop_value(queue);
-            value cast_val = pop_value(queue);
+            value type_to  = pop_value(queue, back);
+            value cast_val = pop_value(queue, back);
             if (type_to.type != typ_t) return nul_v;
             switch (type_to.val.typ_v) {
                 case int_t: return {{.int_v = cast_val.get_int() }, int_t};
@@ -217,7 +217,7 @@ value execute_function(std::queue<value>& queue, function_t func, size_t& exec_p
             }
         }
         case jump: {
-            value amt = pop_value(queue);
+            value amt = pop_value(queue, back);
             if (amt.type != int_t) return nul_v;
             exec_pos = amt.val.int_v - 1; // so it doesn't skip over the jumped-to instr
             return skip_v;
@@ -226,9 +226,9 @@ value execute_function(std::queue<value>& queue, function_t func, size_t& exec_p
     }
 }
 
-void dump_queue(std::ostream& s, std::queue<value> queue) { // copies it
+void dump_queue(std::ostream& s, std::deque<value> queue) { // copies it
     while (!queue.empty()) {
-        value v = pop_value(queue);
+        value v = pop_value(queue, false);
         s << v.to_string(true) << " ";
     }
     s << std::endl;
@@ -255,7 +255,7 @@ int main(int argc, char** argv) {
     }
     std::istream& in_s = *in_stream_p;
 
-    std::queue<value> v_queue;
+    std::deque<value> v_queue;
     std::vector<std::string> toks;
     std::vector<size_t> textpos; // textual position of beginning of each token
     size_t exec_pos = 0;
@@ -272,22 +272,22 @@ int main(int argc, char** argv) {
         }
         value val = parse_tok(toks[exec_pos], exec_pos);
         if (debug) {
-            std::cerr << '\n';
+            std::cerr << "\nq: ";
             dump_queue(std::cerr, v_queue);
             for (const std::string& s : toks) std::cerr << s << " ";
             std::string prepend(textpos[exec_pos], ' ');
-            std::cerr << '\n' << prepend << "^" << exec_pos << std::endl;
+            std::cerr << '\n' << prepend << "^" << exec_pos << '\n';
         }
         switch (val.type) {
             case nul_t: {
                 throw std::runtime_error("Invalid token: " + toks[exec_pos]);
             }
             case fun_t: {
-                for (int32_t i = 0; i < val.amount; ++i) push_value(v_queue, execute_function(v_queue, val.val.fun_v, exec_pos));
+                for (int32_t i = 0; i < std::abs(val.amount); ++i) push_value(v_queue, execute_function(v_queue, val.val.fun_v, exec_pos, val.amount < 0), val.amount > 0);
                 break;
             }
             default: {
-                for (int32_t i = 0; i < val.amount; ++i) push_value(v_queue, val);
+                for (int32_t i = 0; i < std::abs(val.amount); ++i) push_value(v_queue, val, val.amount > 0);
                 break;
             }
         }
