@@ -43,4 +43,4 @@ example: `d32.5` `i-5` `\32` `tint` `'c`
 any instruction may be prepended by an integer to repeat it that amount of times<br>
 prepending any instruction by a minus will treat the queue in reverse (-3i5 will add 5 to the *front* of the queue 3 times)
 
-try `./stackl -f example.sls` for an example of a program that prints numbers from 10 to 1 using a jump loop
+try `./stackl -f filename.cls` on the examples in the `examples` folder to try it out, also use the `-d` argument to see execution flow
