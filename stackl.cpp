@@ -6,7 +6,7 @@
 #include <sstream>
 #include <vector>
 
-enum function_t { add, sub, mult, frac, idiv, jump, greater, lesser, print, cast, del, end, repeat, dupe };
+enum function_t { add, sub, mult, frac, idiv, jump, greater, lesser, print, cast, del, end, repeat, dupe, swap };
 enum value_t { int_t, dbl_t, chr_t, fun_t, typ_t, nul_t, skp_t };
 std::map<std::string, value_t> str_type_map {{"int", int_t}, {"dbl", dbl_t}, {"chr", chr_t}, {"typ", typ_t}, {"nul", nul_t}};
 std::map<value_t, std::string> type_str_map {{int_t, "int"}, {dbl_t, "dbl"}, {chr_t, "chr"}, {typ_t, "typ"}, {nul_t, "nul"}};
@@ -23,6 +23,7 @@ union value_u {
 struct value {
     value_u val;
     value_t type;
+    int32_t aux_val; // due to struct alignment this doesn't increase the memory footprint so why not
 
     double get_dbl() const {
         return type == dbl_t ?          val.dbl_v : (type == int_t ? (double)val.int_v :  (double)val.chr_v);
@@ -61,7 +62,7 @@ struct value {
         if (type == dbl_t || rhs.type == dbl_t) return {{.int_v = get_dbl() < rhs.get_dbl()}, int_t};
         else return {{.int_v = get_int() < rhs.get_int()}, int_t};
     }
-    std::string to_string() const {
+    std::string to_string(bool as_value = false) const {
         std::ostringstream stream;
         switch (type) {
             case int_t: {
@@ -73,7 +74,7 @@ struct value {
                 break;
             }
             case chr_t: {
-                stream << val.chr_v;
+                stream << (as_value ? "c" + std::to_string((int)val.chr_v) : std::string(1, val.chr_v));
                 break;
             }
             case typ_t: {
@@ -130,7 +131,8 @@ value parse_tok(std::string tok, size_t& exec_pos) {
         case '~': return {{.fun_v = del              }, fun_t}; // pops queue
         case 'f': return {{.fun_v = end              }, fun_t}; // ends execution
         case 'r': return {{.fun_v = dupe             }, fun_t}; // dupes current variable
-        case 'e': return {{.fun_v = repeat           }, fun_t}; // moves current variable to end of queue
+        case 'e': return {{.fun_v = repeat           }, fun_t, tok.size() < 2 ? 1 : get_val<int>(tok.substr(1))}; // moves current variable to end of queue provided amount of times
+        case '$': return {{.fun_v = swap             }, fun_t}; // outputs swapped input variables
 
         // variable-character tokens
         case '/': if (size != 1 && (size != 2 || tok[1] != '/')) return nul_v;
@@ -168,18 +170,28 @@ value pop_value(std::queue<value>& queue) {
     return val;
 }
 
-value execute_function(std::queue<value>& queue, function_t func, size_t& exec_pos) {
+value execute_function(std::queue<value>& queue, function_t func, size_t& exec_pos, int32_t aux_val) {
     switch (func) {
         case add:     return pop_value(queue) + pop_value(queue);
-        case sub:     return pop_value(queue) - pop_value(queue);
         case mult:    return pop_value(queue) * pop_value(queue);
-        case frac:    return pop_value(queue) / pop_value(queue);
-        case idiv:    return pop_value(queue).idiv(pop_value(queue));
-        case greater: return pop_value(queue) > pop_value(queue);
-        case lesser:  return pop_value(queue) < pop_value(queue);
-        case repeat:  return pop_value(queue);
+        case repeat:  {
+            for (int32_t i = 0; i < aux_val; ++i){
+                push_value(queue, pop_value(queue));
+            }
+            return skip_v;
+        }
         case dupe:    return get_value(queue);
+        case sub:     { value lhs = pop_value(queue); return lhs - pop_value(queue); }
+        case frac:    { value lhs = pop_value(queue); return lhs / pop_value(queue); }
+        case idiv:    { value lhs = pop_value(queue); return lhs.idiv(pop_value(queue)); }
+        case greater: { value lhs = pop_value(queue); return lhs > pop_value(queue); }
+        case lesser:  { value lhs = pop_value(queue); return lhs < pop_value(queue); }
         case end:     exit(0);
+        case swap: {
+            value old = pop_value(queue);
+            push_value(queue, pop_value(queue));
+            return old;
+        }
         case del: {
             pop_value(queue);
             return skip_v;
@@ -205,16 +217,26 @@ value execute_function(std::queue<value>& queue, function_t func, size_t& exec_p
         case jump: {
             value amt = pop_value(queue);
             if (amt.type != int_t) return nul_v;
-            exec_pos = amt.val.int_v;
+            exec_pos = amt.val.int_v - 1; // so it doesn't skip over the jumped-to instr
             return skip_v;
         }
         default: return skip_v;
     }
 }
 
+void dump_queue(std::ostream& s, std::queue<value> queue) { // copies it
+    while (!queue.empty()) {
+        value v = pop_value(queue);
+        s << v.to_string(true) << " ";
+    }
+    s << std::endl;
+}
+
 int main(int argc, char** argv) {
+    bool debug = argc > 1;
     std::queue<value> v_queue;
     std::vector<std::string> toks;
+    std::vector<size_t> textpos; // textual position of beginning of each token
     size_t exec_pos = 0;
     try {
     while (true) {
@@ -224,15 +246,23 @@ int main(int argc, char** argv) {
                 if (std::cin.eof()) return 0;
                 throw std::runtime_error("Could not read token");
             }
+            textpos.push_back(textpos.size() == 0 ? 0 : textpos.back() + toks.back().size() + 1);
             toks.push_back(tok);
         }
         value val = parse_tok(toks[exec_pos], exec_pos);
+        if (debug) {
+            std::cerr << '\n';
+            dump_queue(std::cerr, v_queue);
+            for (const std::string& s : toks) std::cerr << s << " ";
+            std::string prepend(textpos[exec_pos], ' ');
+            std::cerr << '\n' << prepend << "^\n";
+        }
         switch (val.type) {
             case nul_t: {
                 throw std::runtime_error("Invalid token: " + toks[exec_pos]);
             }
             case fun_t: {
-                push_value(v_queue, execute_function(v_queue, val.val.fun_v, exec_pos));
+                push_value(v_queue, execute_function(v_queue, val.val.fun_v, exec_pos, val.aux_val));
                 break;
             }
             default: {
@@ -246,11 +276,7 @@ int main(int argc, char** argv) {
         std::cerr << "Caught exception while executing program: " << e.what() << std::endl;
         std::cerr << "  While trying to execute instruction " << (exec_pos >= toks.size() ? "(OOB)" : toks[exec_pos]) << " at " << exec_pos << std::endl;
         std::cerr << "  Stack dump: ";
-        while (!v_queue.empty()) {
-            value v = pop_value(v_queue);
-            std::cerr << v.to_string() << " ";
-        }
-        std::cerr << std::endl;
+        dump_queue(std::cerr, v_queue);
         return 1;
     }
     return 0;
