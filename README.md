@@ -12,7 +12,10 @@ on windows:
 2. 'g++ stackl.cpp -o stackl.exe'
 3. run stackl.exe
 
-also run with any arguments to run as debug mode which will print out how your program runs
+### Command-line arguments
+`--debug`/`-d`: run in debug mode, will print the program state every step
+
+`--file`/`-f`: read program from file instead of console
 
 ## How to use it?
 this is a "queue-based" programming language, value literals get pushed to the back of the queue, and functions take values from the front of the queue, removing them unless otherwise specified
@@ -39,4 +42,4 @@ example: `d32.5` `i-5` `\32` `tint` `'c`
 
 any instruction may be prepended by an integer to repeat it that amount of times
 
-try example.sls for an example of a program that prints numbers from 10 to 1 using a jump loop
+try `./stackl -f example.sls` for an example of a program that prints numbers from 10 to 1 using a jump loop
