@@ -172,7 +172,7 @@ value parse_tok(std::string tok) {
 
         // variable-character tokens
         case '!': if (size != 1 && (size != 2 || tok[1] != '=')) return nul_v;
-                  else return {{.fun_v = (size == 2 ? nequals : negate)}, fun_t, amt}; // either division or integer division
+                  else return {{.fun_v = (size == 2 ? nequals : negate)}, fun_t, amt}; // either negation or non-equals comparision
 
         case 'd':  return {{.dbl_v =    get_val<double>(tok.substr(1)) }, dbl_t, amt};
         case 'i':  return {{.int_v =       get_val<int>(tok.substr(1)) }, int_t, amt};

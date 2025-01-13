@@ -21,7 +21,7 @@ on windows:
 this is a "queue-based" programming language, value literals get pushed to the back/front of the queue, and functions take values from the front/back of the queue, removing them unless otherwise specified
 instructions:
 
-`+`, `-`, `*`, `/`, `//`, `<`, `>`: mathematical operations, take 2 values and return one; front value is considered to be left-hand side
+`+`, `-`, `*`, `/`, `//`, `%`, `<`, `>`, `=`, `!=`, `!`: mathematical operations, take 2 values and return one; front value is considered to be left-hand side
 
 `#`: takes nothing, returns current execution position
 
@@ -35,12 +35,14 @@ instructions:
 
 `$`: takes 2 values and returns them in swapped order
 
+`c`: takes 2 values and converts second value to type specified by first
+
 `d`, `i`, `\`, `t`, `'`: value literal specifiers: double, integer, char by-value, type, char: put specified value to end of queue<br>
 example: `d32.5` `i-5` `\32` `tint` `'c`
 
 `j`: takes 2 values and, if second value is not 0, jumps execution to index equal to first value
 
-any instruction may be prepended by an integer to repeat it that amount of times<br>
-prepending any instruction by a minus will treat the queue in reverse (-3i5 will add 5 to the *front* of the queue 3 times)
+any instruction may be prepended by an integer to repeat it that amount of times (example: 3e will cycle the queue by 3 elements)<br>
+prepending any instruction by a minus will treat the queue in reverse (example: -3i5 will add 5 to the *front* of the queue 3 times)
 
 try `./stackl -f filename.cls` on the examples in the `examples` folder to try it out, also use the `-d` argument to see execution flow
