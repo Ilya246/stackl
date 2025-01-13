@@ -23,11 +23,13 @@ union value_u {
     value_t typ_v; // numeric type
 };
 
-
 struct value {
     value_u val;
     value_t type;
     int32_t amount = 1; // how many times to repeat the value
+
+    static const value nul_v;
+    static const value skip_v;
 
     double get_dbl() const {
         return type == dbl_t ?          val.dbl_v : (type == int_t ? (double)val.int_v :  (double)val.chr_v);
@@ -39,48 +41,66 @@ struct value {
         return type == dbl_t ?    (char)val.dbl_v : (type == int_t ?   (char)val.int_v :          val.chr_v);
     }
 
+    bool is_numeric() const {
+        return type == int_t || type == dbl_t || type == chr_t;
+    }
+
+    bool op_valid(const value& rhs) const {
+        return is_numeric() && rhs.is_numeric();
+    }
     value operator+(const value& rhs) const {
+        if (!op_valid(rhs)) return nul_v;
         if (type == dbl_t || rhs.type == dbl_t) return {{.dbl_v = get_dbl() + rhs.get_dbl()}, dbl_t};
-        else return {{.int_v = get_int() + rhs.get_int()}, int_t};
+        return {{.int_v = get_int() + rhs.get_int()}, int_t};
     }
     value operator-(const value& rhs) const {
+        if (!op_valid(rhs)) return nul_v;
         if (type == dbl_t || rhs.type == dbl_t) return {{.dbl_v = get_dbl() - rhs.get_dbl()}, dbl_t};
-        else return {{.int_v = get_int() - rhs.get_int()}, int_t};
+        return {{.int_v = get_int() - rhs.get_int()}, int_t};
     }
     value operator*(const value& rhs) const {
+        if (!op_valid(rhs)) return nul_v;
         if (type == dbl_t || rhs.type == dbl_t) return {{.dbl_v = get_dbl() * rhs.get_dbl()}, dbl_t};
-        else return {{.int_v = get_int() * rhs.get_int()}, int_t};
+        return {{.int_v = get_int() * rhs.get_int()}, int_t};
     }
     value operator/(const value& rhs) const {
         return {{.dbl_v = get_dbl() / rhs.get_dbl()}, dbl_t};
     }
     value idiv(const value& rhs) const {
+        if (!op_valid(rhs)) return nul_v;
         if (rhs.type == dbl_t) return {{.int_v = (int64_t)(get_dbl() / rhs.get_dbl())}, int_t};
-        else return {{.int_v = get_int() / rhs.get_int()}, int_t};
+        return {{.int_v = get_int() / rhs.get_int()}, int_t};
     }
     value operator>(const value& rhs) const {
+        if (!op_valid(rhs)) return nul_v;
         if (type == dbl_t || rhs.type == dbl_t) return {{.int_v = get_dbl() > rhs.get_dbl()}, int_t};
-        else return {{.int_v = get_int() > rhs.get_int()}, int_t};
+        return {{.int_v = get_int() > rhs.get_int()}, int_t};
     }
     value operator<(const value& rhs) const {
+        if (!op_valid(rhs)) return nul_v;
         if (type == dbl_t || rhs.type == dbl_t) return {{.int_v = get_dbl() < rhs.get_dbl()}, int_t};
-        else return {{.int_v = get_int() < rhs.get_int()}, int_t};
+        return {{.int_v = get_int() < rhs.get_int()}, int_t};
     }
     value operator==(const value& rhs) const {
+        if (!op_valid(rhs)) return nul_v;
         if (type == dbl_t || rhs.type == dbl_t) return {{.int_v = get_dbl() == rhs.get_dbl()}, int_t};
-        else return {{.int_v = get_int() == rhs.get_int()}, int_t};
+        return {{.int_v = get_int() == rhs.get_int()}, int_t};
     }
     value operator!=(const value& rhs) const {
+        if (!op_valid(rhs)) return nul_v;
         if (type == dbl_t || rhs.type == dbl_t) return {{.int_v = get_dbl() != rhs.get_dbl()}, int_t};
-        else return {{.int_v = get_int() != rhs.get_int()}, int_t};
+        return {{.int_v = get_int() != rhs.get_int()}, int_t};
     }
     value operator!() const {
+        if (!is_numeric()) return nul_v;
         return {{.int_v = get_int() == 0}, int_t};
     }
     value operator%(const value& rhs) const {
+        if (!op_valid(rhs)) return nul_v;
         if (type == dbl_t || rhs.type == dbl_t) return {{.dbl_v = std::fmod(get_dbl(), rhs.get_dbl())}, dbl_t};
-        else return {{.int_v = get_int() % rhs.get_int()}, int_t};
+        return {{.int_v = get_int() % rhs.get_int()}, int_t};
     }
+
     std::string to_string(bool as_value = false) const {
         std::ostringstream stream;
         switch (type) {
@@ -107,10 +127,13 @@ struct value {
         }
         return stream.str();
     }
+
 };
 
-const value nul_v = {{}, nul_t};
-const value skip_v = {{}, skp_t}; // special value that can never be written to the queue
+const value value::nul_v = {{}, nul_t};
+const value& nul_v = value::nul_v;
+const value value::skip_v = {{}, skp_t}; // special value that can never be written to the queue
+const value& skip_v = value::skip_v;
 
 template<typename T>
 T get_val(const std::string& s) {
