@@ -203,9 +203,9 @@ value parse_tok(std::string tok) {
         case 't':  return {{.typ_v =       str_type_map[tok.substr(1)] }, typ_t, amt}; // type specifier for c
         case 'j':  return {{.fun_v =                              jump }, fun_t, amt};
 
-        if (size < 2) return nul_v;
         // 2-character tokens
-        case '\'': return {{tok[1]}, chr_t}; // character literal
+        case '\'': if (size != 2) return nul_v; // character literal
+                   else return {{.chr_v = tok[1]}, chr_t, amt};
 
         default: return nul_v;
     }
@@ -216,7 +216,7 @@ void push_value(std::deque<value>& queue, const value& val, bool back) {
     if (val.type != skp_t) back ? queue.push_back(val) : queue.push_front(val);
 }
 
-value get_value(std::deque<value>& queue, bool back) {
+value get_value(const std::deque<value>& queue, bool back) {
     if (queue.empty()) {
         throw std::runtime_error("Stack underflow");
     }
