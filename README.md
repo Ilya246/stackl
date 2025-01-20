@@ -46,3 +46,7 @@ any instruction may be prepended by an integer to repeat it that amount of times
 prepending any instruction by a minus will treat the queue in reverse (example: -3i5 will add 5 to the *front* of the queue 3 times)
 
 try `./stackl -f filename.cls` on the examples in the `examples` folder to try it out, also use the `-d` argument to see execution flow
+
+### How do I even code in this?
+
+run it with -d and try things until you get what you want
